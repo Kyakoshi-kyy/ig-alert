@@ -11,39 +11,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tool
-        run: pip install instaloader
-
-      - name: Check Instagram and Notify
+      - name: Check Mirror and Notify
         env:
           IG_USER: "arcadiacinema"
           NTFY_TOPIC: "ig-watch-83920-alert"
         run: |
           python3 -c '
-          import os, urllib.request, instaloader
+          import os, re, urllib.request
 
           user = os.environ["IG_USER"]
           topic = os.environ["NTFY_TOPIC"]
+          mirror_url = "https://imginn.com" + "/" + user + "/"
 
-          L = instaloader.Instaloader()
-          profile = instaloader.Profile.from_username(L.context, user)
-          latest_post = next(profile.get_posts())
+          req = urllib.request.Request(
+              mirror_url,
+              headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"}
+          )
+          html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", errors="ignore")
 
-          shortcode = latest_post.shortcode
-          post_url = "https://www.instagram.com" + "/p/" + shortcode + "/"
-          caption = (latest_post.caption or "New post")[:200]
+          matches = re.findall(r"/p/([A-Za-z0-9_-]+)/", html)
+          if not matches:
+              raise Exception("No posts found or mirror blocked")
+
+          shortcode = matches[0]
+          post_url = "https://instagram.com" + "/p/" + shortcode + "/"
 
           last_id = open("last_id.txt").read().strip() if os.path.exists("last_id.txt") else ""
 
           if shortcode and shortcode != last_id:
               with open("last_id.txt", "w") as f:
                   f.write(shortcode)
-              req = urllib.request.Request(
+              notify = urllib.request.Request(
                   "https://ntfy.sh" + "/" + topic,
-                  data=caption.encode("utf-8"),
+                  data=("New post on @" + user).encode("utf-8"),
                   headers={"Title": "New post from @" + user, "Click": post_url}
               )
-              urllib.request.urlopen(req)
+              urllib.request.urlopen(notify)
+              print("Sent alert for:", shortcode)
+          else:
+              print("No new posts.")
           '
 
       - name: Save state
