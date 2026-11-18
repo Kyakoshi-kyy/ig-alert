@@ -11,29 +11,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check Mirror and Notify
+      - name: Install browser client
+        run: pip install curl_cffi
+
+      - name: Check Instagram and Notify
         env:
           IG_USER: "arcadiacinema"
           NTFY_TOPIC: "ig-watch-83920-alert"
         run: |
           python3 -c '
           import os, re, urllib.request
+          from curl_cffi import requests
 
           user = os.environ["IG_USER"]
           topic = os.environ["NTFY_TOPIC"]
-          mirror_url = "https://imginn.com" + "/" + user + "/"
 
-          req = urllib.request.Request(
-              mirror_url,
-              headers={"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"}
-          )
-          html = urllib.request.urlopen(req, timeout=20).read().decode("utf-8", errors="ignore")
+          # Try Instagram public embed page first, then Imginn via Chrome impersonation
+          urls = [
+              "https://instagram.com" + "/" + user + "/embed/",
+              "https://imginn.com" + "/" + user + "/"
+          ]
 
-          matches = re.findall(r"/p/([A-Za-z0-9_-]+)/", html)
+          matches = []
+          for u in urls:
+              try:
+                  r = requests.get(u, impersonate="chrome", timeout=20)
+                  if r.status_code == 200:
+                      found = re.findall(r"/p/([A-Za-z0-9_-]+)/", r.text)
+                      if found:
+                          matches = found
+                          print("Fetched from:", u)
+                          break
+              except Exception as e:
+                  print("Failed:", u, e)
+
           if not matches:
-              raise Exception("No posts found or mirror blocked")
+              raise Exception("Blocked on all sources")
 
-          shortcode = matches[0]
+          shortcode = matches
           post_url = "https://instagram.com" + "/p/" + shortcode + "/"
 
           last_id = open("last_id.txt").read().strip() if os.path.exists("last_id.txt") else ""
