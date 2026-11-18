@@ -1,0 +1,55 @@
+name: Instagram 5-Min Alert
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check-ig:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tool
+        run: pip install instaloader
+
+      - name: Check Instagram and Notify
+        env:
+          IG_USER: "arcadiacinema"
+          NTFY_TOPIC: "ig-watch-83920-alert"
+        run: |
+          python3 -c '
+          import os, urllib.request, instaloader
+
+          user = os.environ["IG_USER"]
+          topic = os.environ["NTFY_TOPIC"]
+
+          L = instaloader.Instaloader()
+          profile = instaloader.Profile.from_username(L.context, user)
+          latest_post = next(profile.get_posts())
+
+          shortcode = latest_post.shortcode
+          post_url = "https://www.instagram.com" + "/p/" + shortcode + "/"
+          caption = (latest_post.caption or "New post")[:200]
+
+          last_id = open("last_id.txt").read().strip() if os.path.exists("last_id.txt") else ""
+
+          if shortcode and shortcode != last_id:
+              with open("last_id.txt", "w") as f:
+                  f.write(shortcode)
+              req = urllib.request.Request(
+                  "https://ntfy.sh" + "/" + topic,
+                  data=caption.encode("utf-8"),
+                  headers={"Title": "New post from @" + user, "Click": post_url}
+              )
+              urllib.request.urlopen(req)
+          '
+
+      - name: Save state
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add last_id.txt
+          git commit -m "Update" || exit 0
+          git push
