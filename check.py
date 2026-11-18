@@ -4,29 +4,24 @@ from curl_cffi import requests
 user = os.environ["IG_USER"]
 topic = os.environ["NTFY_TOPIC"]
 
-urls = [
-    f"https://www.instagram.com/{user}/embed/",
-    f"https://imginn.com/{user}/",
-]
+u = f"https://www.instagram.com/{user}/embed/"
+r = requests.get(u, impersonate="chrome", timeout=20)
+print(u, "->", r.status_code, "length:", len(r.text))
 
-matches = []
-for u in urls:
-    try:
-        r = requests.get(u, impersonate="chrome", timeout=20)
-        print(u, "->", r.status_code)
-        if r.status_code == 200:
-            found = re.findall(r"/(?:p|reel)/([A-Za-z0-9_-]+)/", r.text)
-            if found:
-                matches = found
-                break
-    except Exception as e:
-        print("Failed:", u, e)
+text = r.text.replace("\\/", "/")
+found = re.findall(r"/(?:p|reel)/([A-Za-z0-9_-]{8,})", text)
 
-if not matches:
-    print("Blocked or no posts found")
+seen = []
+for s in found:
+    if s not in seen:
+        seen.append(s)
+print("Shortcodes found:", seen[:10])
+
+if not seen:
+    print("DEBUG sample:", text[:1500])
     sys.exit(0)
 
-shortcode = matches[0]
+shortcode = seen[0]
 post_url = f"https://www.instagram.com/p/{shortcode}/"
 
 last_id = open("last_id.txt").read().strip() if os.path.exists("last_id.txt") else ""
